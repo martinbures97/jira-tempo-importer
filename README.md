@@ -15,6 +15,7 @@ flowchart TB
     subgraph Config["Configuration"]
         CFG[config.json]
         CREDS[credentials.json<br/>Google Service Account]
+        KR[System Keyring<br/>API Tokens]
     end
 
     subgraph App["tempo_importer.py"]
@@ -35,7 +36,9 @@ flowchart TB
     CREDS --> GS
 
     CFG --> App
+    KR --> App
     SETUP --> CFG
+    SETUP --> KR
 
     LOAD --> PARSE
     PARSE --> JIRA
@@ -56,7 +59,7 @@ sequenceDiagram
     participant T as Tempo API
 
     U->>S: python tempo_importer.py
-    S->>S: Load config.json
+    S->>S: Load config.json + keyring secrets
     S->>D: Load all rows
     D-->>S: Worksheet data
 
@@ -113,6 +116,8 @@ The wizard will ask for:
 
 Configuration is saved to `config.json` and reused automatically on subsequent runs.
 
+**Security**: API tokens are stored securely in your system's keyring (macOS Keychain, Windows Credential Locker, or Linux Secret Service) - not in plain text files.
+
 ## Usage
 
 ```bash
@@ -158,6 +163,20 @@ python tempo_importer.py --setup
 5. After creation, click on the service account → Keys → Add Key → JSON
 6. Download the JSON file
 7. **Important**: Share your Google Sheet with the service account email (found in JSON as `client_email`)
+
+## Security
+
+API tokens (Jira and Tempo) are stored securely using your operating system's credential storage:
+
+| OS | Storage |
+|----|---------|
+| macOS | Keychain |
+| Windows | Credential Locker |
+| Linux | Secret Service (GNOME Keyring, KWallet) |
+
+Non-sensitive configuration (URLs, email, data source settings) is stored in `config.json`.
+
+If the `keyring` package is not available, tokens fall back to `config.json` storage (not recommended for shared machines).
 
 ## License
 

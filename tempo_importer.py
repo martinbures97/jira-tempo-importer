@@ -29,6 +29,13 @@ try:
 except ImportError:
     OPENPYXL_AVAILABLE = False
 
+# Optional import for secure credential storage
+try:
+    import keyring
+    KEYRING_AVAILABLE = True
+except ImportError:
+    KEYRING_AVAILABLE = False
+
 
 # Config file path
 CONFIG_FILE = Path(__file__).parent / "config.json"
@@ -39,6 +46,9 @@ SOURCE_LOCAL_FILE = "local_file"
 
 # Tempo API base URL
 TEMPO_API_URL = "https://api.tempo.io/4"
+
+# Keyring service name
+KEYRING_SERVICE = "jira-tempo-importer"
 
 # Column indices (0-based) - adjust if your sheet has different structure
 COL_DATE = 0        # A - datum (d.m. format, e.g., "1.12.")
@@ -51,19 +61,80 @@ COL_IMPORTED = 4    # E - imported date
 config: dict = {}
 
 
+def get_secret(key: str) -> Optional[str]:
+    """Get a secret from keyring."""
+    if not KEYRING_AVAILABLE:
+        return None
+    try:
+        return keyring.get_password(KEYRING_SERVICE, key)
+    except Exception:
+        return None
+
+
+def set_secret(key: str, value: str) -> bool:
+    """Store a secret in keyring."""
+    if not KEYRING_AVAILABLE:
+        return False
+    try:
+        keyring.set_password(KEYRING_SERVICE, key, value)
+        return True
+    except Exception:
+        return False
+
+
+def delete_secret(key: str) -> None:
+    """Delete a secret from keyring."""
+    if not KEYRING_AVAILABLE:
+        return
+    try:
+        keyring.delete_password(KEYRING_SERVICE, key)
+    except Exception:
+        pass
+
+
+# Keys that should be stored securely in keyring
+SECURE_KEYS = ["jira_api_token", "tempo_api_token"]
+
+
 def load_config() -> dict:
-    """Load configuration from config file."""
+    """Load configuration from config file and keyring."""
+    cfg = {}
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
-    return {}
+            cfg = json.load(f)
+
+    # Load secrets from keyring
+    if KEYRING_AVAILABLE:
+        for key in SECURE_KEYS:
+            secret = get_secret(key)
+            if secret:
+                cfg[key] = secret
+
+    return cfg
 
 
 def save_config(cfg: dict) -> None:
-    """Save configuration to config file."""
+    """Save configuration to config file and secrets to keyring."""
+    # Separate secrets from regular config
+    config_to_save = {}
+    secrets_saved = []
+
+    for key, value in cfg.items():
+        if key in SECURE_KEYS:
+            if KEYRING_AVAILABLE and set_secret(key, value):
+                secrets_saved.append(key)
+            else:
+                # Fallback: save to config file if keyring unavailable
+                config_to_save[key] = value
+        else:
+            config_to_save[key] = value
+
     with open(CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
+        json.dump(config_to_save, f, indent=2)
+
     print(f"\nConfiguration saved to {CONFIG_FILE}")
+    if secrets_saved:
+        print(f"Secrets stored securely in system keyring: {', '.join(secrets_saved)}")
 
 
 def test_jira_connection(base_url: str, email: str, api_token: str) -> bool:
