@@ -339,7 +339,7 @@ class LocalExcelWorksheet:
 
         self.file_path = file_path
         self._workbook = openpyxl.load_workbook(file_path)
-        self._sheet = self._workbook.active
+        self._sheet = self._workbook.worksheets[0]  # Always use first worksheet
         self.title = self._sheet.title
 
     def get_all_values(self) -> list[list[str]]:

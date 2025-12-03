@@ -1,30 +1,30 @@
 # Jira Tempo Importer
 
-Import časových záznamů z Google Sheets nebo lokálních souborů (CSV, Excel) do Tempo (Jira).
+Import time entries from Google Sheets or local files (CSV, Excel) to Tempo (Jira).
 
-## Architektura
+## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph Input["Zdroje dat"]
+    subgraph Input["Data Sources"]
         GS[Google Sheets]
-        CSV[CSV soubor]
-        XLS[Excel soubor]
+        CSV[CSV file]
+        XLS[Excel file]
     end
 
-    subgraph Config["Konfigurace"]
+    subgraph Config["Configuration"]
         CFG[config.json]
         CREDS[credentials.json<br/>Google Service Account]
     end
 
     subgraph App["tempo_importer.py"]
         SETUP[Setup Wizard]
-        LOAD[Načtení dat]
-        PARSE[Parsování řádků]
+        LOAD[Load Data]
+        PARSE[Parse Rows]
         CACHE[Issue ID Cache]
     end
 
-    subgraph External["Externí API"]
+    subgraph External["External APIs"]
         JIRA[Jira REST API<br/>/rest/api/3/issue]
         TEMPO[Tempo API<br/>/4/worklogs]
     end
@@ -41,118 +41,124 @@ flowchart TB
     PARSE --> JIRA
     JIRA --> CACHE
     CACHE --> TEMPO
-    TEMPO --> |Úspěch| UPDATE[Aktualizace<br/>sloupce Imported]
+    TEMPO --> |Success| UPDATE[Update<br/>Imported column]
     UPDATE --> Input
 ```
 
-## Sekvenční diagram importu
+## Import Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant U as Uživatel
+    participant U as User
     participant S as tempo_importer.py
-    participant D as Zdroj dat
+    participant D as Data Source
     participant J as Jira API
     participant T as Tempo API
 
     U->>S: python tempo_importer.py
-    S->>S: Načtení config.json
-    S->>D: Načtení všech řádků
-    D-->>S: Data worksheetu
+    S->>S: Load config.json
+    S->>D: Load all rows
+    D-->>S: Worksheet data
 
-    loop Pro každý neimportovaný řádek
-        S->>S: Parsování data a hodin
+    loop For each unimported row
+        S->>S: Parse date and hours
         S->>J: GET /rest/api/3/issue/{key}
         J-->>S: Issue ID
         S->>T: POST /4/worklogs
-        T-->>S: Worklog vytvořen
-        S->>D: Aktualizace sloupce Imported
+        T-->>S: Worklog created
+        S->>D: Update Imported column
     end
 
-    S->>U: Souhrn (imported/skipped)
+    S->>U: Summary (imported/skipped)
 ```
 
-## Struktura worksheetu
+## Worksheet Structure
 
-| A - Datum | B - Task ID | C - Description | D - Hodiny | E - Imported |
-|-----------|-------------|-----------------|------------|--------------|
-| 1.12.     | PROJ-123    | Popis práce     | 2.5        |              |
-| 2.12.     | PROJ-456    | Další práce     | 4.0        | 02.12.2024   |
+The tool always uses the **first worksheet** in the file (for Google Sheets and Excel).
 
-- **Datum**: formát `d.m.` (např. `1.12.`, `15.1.`)
-- **Task ID**: Jira ticket key (např. `PROJ-123`)
-- **Description**: Popis práce
-- **Hodiny**: Počet hodin (desetinná čárka nebo tečka)
-- **Imported**: Prázdné = k importu, vyplněné = již importováno
+| A - Date | B - Task ID | C - Description | D - Hours | E - Imported |
+|----------|-------------|-----------------|-----------|--------------|
+| 1.12.    | PROJ-123    | Work description | 2.5      |              |
+| 2.12.    | PROJ-456    | More work        | 4.0      | 02.12.2024   |
 
-## Instalace
+- **Date**: format `d.m.` (e.g., `1.12.`, `15.1.`)
+- **Task ID**: Jira ticket key (e.g., `PROJ-123`)
+- **Description**: Work description
+- **Hours**: Number of hours (decimal comma or point)
+- **Imported**: Empty = to be imported, filled = already imported
+
+## Installation
 
 ```bash
-# Vytvořit virtual environment
+# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# Nainstalovat závislosti
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-## První spuštění
+## First Run
 
-Při prvním spuštění se spustí interaktivní setup wizard, který vás provede konfigurací:
+On first run, an interactive setup wizard will guide you through configuration:
 
 ```bash
 python tempo_importer.py
 ```
 
-Wizard se vás zeptá na:
-1. **Jira URL** a přihlašovací údaje (email + API token)
+The wizard will ask for:
+1. **Jira URL** and credentials (email + API token)
 2. **Tempo API token**
-3. **Zdroj dat** - Google Sheets nebo lokální soubor (CSV/Excel)
+3. **Data source** - Google Sheets or local file (CSV/Excel)
 
-Konfigurace se uloží do `config.json` a při dalším spuštění se použije automaticky.
+Configuration is saved to `config.json` and reused automatically on subsequent runs.
 
-## Použití
+## Usage
 
 ```bash
-# Aktivovat venv
+# Activate venv
 source venv/bin/activate
 
-# Normální import
+# Normal import
 python tempo_importer.py
 
-# Dry run - ukáže co by se importovalo (bez změn)
+# Dry run - shows what would be imported (no changes)
 python tempo_importer.py --dry-run
 
-# Použít jiný soubor (jednorázově)
-python tempo_importer.py --file /cesta/k/souboru.xlsx
+# Use a different file (one-time)
+python tempo_importer.py --file /path/to/file.xlsx
 
-# Znovu spustit setup wizard
+# Re-run setup wizard
 python tempo_importer.py --setup
 ```
 
-## Podporované formáty
+## Supported Formats
 
-- **Google Sheets** - vyžaduje service account credentials
-- **CSV** - automatická detekce oddělovače (`,`, `;`, tab)
-- **Excel** - `.xlsx`, `.xls`, `.xlsm`
+- **Google Sheets** - requires service account credentials (uses first worksheet)
+- **CSV** - automatic delimiter detection (`,`, `;`, tab)
+- **Excel** - `.xlsx`, `.xls`, `.xlsm` (uses first worksheet)
 
-## Získání API tokenů
+## Getting API Tokens
 
 ### Tempo API Token
-1. Jděte do Tempo → Settings (ozubené kolečko)
+1. Go to Tempo → Settings (gear icon)
 2. API Integration → New Token
-3. Zkopírujte token
+3. Copy the token
 
 ### Jira API Token
-1. Jděte na https://id.atlassian.com/manage-profile/security/api-tokens
+1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
 2. Create API token
-3. Zkopírujte token
+3. Copy the token
 
-### Google Sheets (volitelné)
-1. Jděte na [Google Cloud Console](https://console.cloud.google.com/)
-2. Vytvořte nový projekt
+### Google Sheets (optional)
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project
 3. APIs & Services → Enable APIs → "Google Sheets API"
 4. APIs & Services → Credentials → Create Credentials → Service Account
-5. Po vytvoření klikněte na service account → Keys → Add Key → JSON
-6. Stáhněte JSON soubor
-7. **Důležité**: Sdílejte váš Google Sheet s emailem service accountu (najdete v JSON jako `client_email`)
+5. After creation, click on the service account → Keys → Add Key → JSON
+6. Download the JSON file
+7. **Important**: Share your Google Sheet with the service account email (found in JSON as `client_email`)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file.
