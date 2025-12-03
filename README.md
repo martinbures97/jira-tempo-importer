@@ -137,6 +137,17 @@ python tempo_importer.py --file /path/to/file.xlsx
 python tempo_importer.py --setup
 ```
 
+## Logging
+
+Each import creates a log file in the `logs/` directory:
+- `import_YYYYMMDD_HHMMSS.log` - for regular imports
+- `dry_run_YYYYMMDD_HHMMSS.log` - for dry runs
+
+Log files contain:
+- Timestamp of import start/end
+- Each processed row with status (success/failure)
+- Summary of imported/skipped entries
+
 ## Supported Formats
 
 - **Google Sheets** - requires service account credentials (uses first worksheet)

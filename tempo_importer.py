@@ -50,6 +50,9 @@ TEMPO_API_URL = "https://api.tempo.io/4"
 # Keyring service name
 KEYRING_SERVICE = "jira-tempo-importer"
 
+# Logs directory
+LOGS_DIR = Path(__file__).parent / "logs"
+
 # Column indices (0-based) - adjust if your sheet has different structure
 COL_DATE = 0        # A - datum (d.m. format, e.g., "1.12.")
 COL_TASK_ID = 1     # B - task ID (Jira ticket, e.g., "PROJ-123")
@@ -59,6 +62,46 @@ COL_IMPORTED = 4    # E - imported date
 
 # Global config (loaded at runtime)
 config: dict = {}
+
+# Global logger for current import session
+import_log: Optional[Path] = None
+
+
+def init_import_log(dry_run: bool = False) -> Path:
+    """Initialize a new import log file."""
+    LOGS_DIR.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    prefix = "dry_run_" if dry_run else "import_"
+    log_file = LOGS_DIR / f"{prefix}{timestamp}.log"
+
+    with open(log_file, "w") as f:
+        f.write(f"Jira Tempo Importer - {'Dry Run' if dry_run else 'Import'} Log\n")
+        f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("=" * 60 + "\n\n")
+
+    return log_file
+
+
+def log(message: str) -> None:
+    """Write a message to the import log and print to console."""
+    print(message)
+    if import_log:
+        with open(import_log, "a") as f:
+            f.write(message + "\n")
+
+
+def log_summary(imported: int, skipped: int, dry_run: bool = False) -> None:
+    """Write summary to the log file."""
+    if not import_log:
+        return
+
+    with open(import_log, "a") as f:
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Imported: {imported}\n")
+        f.write(f"Skipped: {skipped}\n")
+        if dry_run:
+            f.write("(Dry run - no actual changes made)\n")
 
 
 def get_secret(key: str) -> Optional[str]:
@@ -612,7 +655,7 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int]:
     all_values = worksheet.get_all_values()
 
     if len(all_values) <= 1:
-        print("Worksheet is empty or has only headers.")
+        log("Worksheet is empty or has only headers.")
         return 0, 0
 
     # Skip header row
@@ -644,14 +687,14 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int]:
         # Parse date
         parsed_date = parse_date(date_str)
         if not parsed_date:
-            print(f"Row {row_idx}: Invalid date format '{date_str}', skipping.")
+            log(f"Row {row_idx}: Invalid date format '{date_str}', skipping.")
             skipped_count += 1
             continue
 
         # Parse hours
         time_seconds = parse_hours(hours_str)
         if not time_seconds:
-            print(f"Row {row_idx}: Invalid hours format '{hours_str}', skipping.")
+            log(f"Row {row_idx}: Invalid hours format '{hours_str}', skipping.")
             skipped_count += 1
             continue
 
@@ -661,28 +704,28 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int]:
         hours_display = time_seconds / 3600
 
         if dry_run:
-            print(f"[DRY RUN] Row {row_idx}: Would import {task_id} - {parsed_date} - {hours_display}h - {description}")
+            log(f"[DRY RUN] Row {row_idx}: Would import {task_id} - {parsed_date} - {hours_display}h - {description}")
             imported_count += 1
             continue
 
         try:
-            print(f"Row {row_idx}: Importing {task_id} - {parsed_date} - {hours_display}h - {description[:30]}...")
+            log(f"Row {row_idx}: Importing {task_id} - {parsed_date} - {hours_display}h - {description[:30]}...")
             log_time_to_tempo(task_id, parsed_date, time_seconds, description)
 
             # Update the imported column with current date
             imported_date = datetime.now().strftime("%d.%m.%Y")
             worksheet.update_cell(row_idx, COL_IMPORTED + 1, imported_date)  # +1 for 1-based index
 
-            print(f"  ✓ Successfully imported and marked as imported on {imported_date}")
+            log(f"  ✓ Successfully imported and marked as imported on {imported_date}")
             imported_count += 1
 
         except requests.exceptions.HTTPError as e:
-            print(f"  ✗ Failed to import: {e}")
+            log(f"  ✗ Failed to import: {e}")
             if e.response is not None:
-                print(f"    Response: {e.response.text}")
+                log(f"    Response: {e.response.text}")
             skipped_count += 1
         except Exception as e:
-            print(f"  ✗ Unexpected error: {e}")
+            log(f"  ✗ Unexpected error: {e}")
             skipped_count += 1
 
     return imported_count, skipped_count
@@ -709,7 +752,7 @@ def get_worksheet():
 
 def main():
     """Main entry point."""
-    global config
+    global config, import_log
 
     import argparse
 
@@ -749,20 +792,27 @@ def main():
         config["local_file_path"] = args.file
         print(f"\nUsing file override: {args.file}")
 
+    # Initialize import log
+    import_log = init_import_log(dry_run=args.dry_run)
+
     worksheet = get_worksheet()
 
-    print("\nProcessing rows...")
-    print("-" * 60)
+    log("\nProcessing rows...")
+    log("-" * 60)
 
     imported, skipped = process_worksheet(worksheet, dry_run=args.dry_run)
 
-    print("-" * 60)
-    print(f"\nSummary:")
-    print(f"  Imported: {imported}")
-    print(f"  Skipped:  {skipped}")
+    log("-" * 60)
+    log(f"\nSummary:")
+    log(f"  Imported: {imported}")
+    log(f"  Skipped:  {skipped}")
 
     if args.dry_run:
-        print("\n(This was a dry run - no actual changes were made)")
+        log("\n(This was a dry run - no actual changes were made)")
+
+    # Write final summary to log
+    log_summary(imported, skipped, dry_run=args.dry_run)
+    print(f"\nLog saved to: {import_log}")
 
 
 if __name__ == "__main__":
