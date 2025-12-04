@@ -146,7 +146,7 @@ Each import creates a log file in the `logs/` directory:
 Log files contain:
 - Timestamp of import start/end
 - Each processed row with status (success/failure)
-- Summary of imported/skipped entries
+- Summary of imported/skipped entries and total hours
 
 ## Supported Formats
 
