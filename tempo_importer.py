@@ -90,7 +90,7 @@ def log(message: str) -> None:
             f.write(message + "\n")
 
 
-def log_summary(imported: int, skipped: int, dry_run: bool = False) -> None:
+def log_summary(imported: int, skipped: int, total_hours: float, dry_run: bool = False) -> None:
     """Write summary to the log file."""
     if not import_log:
         return
@@ -100,6 +100,7 @@ def log_summary(imported: int, skipped: int, dry_run: bool = False) -> None:
         f.write(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Imported: {imported}\n")
         f.write(f"Skipped: {skipped}\n")
+        f.write(f"Total hours: {total_hours:.2f}h\n")
         if dry_run:
             f.write("(Dry run - no actual changes made)\n")
 
@@ -640,7 +641,7 @@ def log_time_to_tempo(
     return response.json()
 
 
-def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int]:
+def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int, float]:
     """
     Process worksheet and import unimported rows to Tempo.
 
@@ -649,20 +650,21 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int]:
         dry_run: If True, only show what would be imported without actually importing
 
     Returns:
-        Tuple of (imported_count, skipped_count)
+        Tuple of (imported_count, skipped_count, total_hours)
     """
     # Get all values including headers
     all_values = worksheet.get_all_values()
 
     if len(all_values) <= 1:
         log("Worksheet is empty or has only headers.")
-        return 0, 0
+        return 0, 0, 0.0
 
     # Skip header row
     data_rows = all_values[1:]
 
     imported_count = 0
     skipped_count = 0
+    total_hours = 0.0
 
     for row_idx, row in enumerate(data_rows, start=2):  # Start from 2 (1-based, skip header)
         # Ensure row has enough columns
@@ -706,6 +708,7 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int]:
         if dry_run:
             log(f"[DRY RUN] Row {row_idx}: Would import {task_id} - {parsed_date} - {hours_display}h - {description}")
             imported_count += 1
+            total_hours += hours_display
             continue
 
         try:
@@ -718,6 +721,7 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int]:
 
             log(f"  ✓ Successfully imported and marked as imported on {imported_date}")
             imported_count += 1
+            total_hours += hours_display
 
         except requests.exceptions.HTTPError as e:
             log(f"  ✗ Failed to import: {e}")
@@ -728,7 +732,7 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int]:
             log(f"  ✗ Unexpected error: {e}")
             skipped_count += 1
 
-    return imported_count, skipped_count
+    return imported_count, skipped_count, total_hours
 
 
 def get_worksheet():
@@ -800,18 +804,19 @@ def main():
     log("\nProcessing rows...")
     log("-" * 60)
 
-    imported, skipped = process_worksheet(worksheet, dry_run=args.dry_run)
+    imported, skipped, total_hours = process_worksheet(worksheet, dry_run=args.dry_run)
 
     log("-" * 60)
     log(f"\nSummary:")
-    log(f"  Imported: {imported}")
-    log(f"  Skipped:  {skipped}")
+    log(f"  Imported:    {imported}")
+    log(f"  Skipped:     {skipped}")
+    log(f"  Total hours: {total_hours:.2f}h")
 
     if args.dry_run:
         log("\n(This was a dry run - no actual changes were made)")
 
     # Write final summary to log
-    log_summary(imported, skipped, dry_run=args.dry_run)
+    log_summary(imported, skipped, total_hours, dry_run=args.dry_run)
     print(f"\nLog saved to: {import_log}")
 
 
