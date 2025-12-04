@@ -743,16 +743,17 @@ def get_worksheet():
         print("\nConnecting to Google Sheets...")
         client = get_google_sheets_client()
 
-        print(f"Opening spreadsheet: {config['spreadsheet_id']}")
         spreadsheet = client.open_by_key(config["spreadsheet_id"])
+        print(f"Spreadsheet: {spreadsheet.title}")
 
         worksheets = spreadsheet.worksheets()
         worksheet = worksheets[0]
+        print(f"Worksheet: {worksheet.title}")
     else:
         print(f"\nLoading local file: {config['local_file_path']}")
         worksheet = get_local_worksheet(config["local_file_path"])
+        print(f"Worksheet: {worksheet.title}")
 
-    print(f"Using: '{worksheet.title}'")
     return worksheet
 
 
