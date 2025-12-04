@@ -677,6 +677,11 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int, float
         hours_str = row[COL_HOURS]
         imported = row[COL_IMPORTED]
 
+        # Parse hours early to count total hours for all rows
+        time_seconds = parse_hours(hours_str)
+        if time_seconds:
+            total_hours += time_seconds / 3600
+
         # Skip if already imported
         if imported and imported.strip():
             skipped_count += 1
@@ -693,8 +698,7 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int, float
             skipped_count += 1
             continue
 
-        # Parse hours
-        time_seconds = parse_hours(hours_str)
+        # Validate hours (already parsed above)
         if not time_seconds:
             log(f"Row {row_idx}: Invalid hours format '{hours_str}', skipping.")
             skipped_count += 1
@@ -708,7 +712,6 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int, float
         if dry_run:
             log(f"[DRY RUN] Row {row_idx}: Would import {task_id} - {parsed_date} - {hours_display}h - {description}")
             imported_count += 1
-            total_hours += hours_display
             continue
 
         try:
@@ -721,7 +724,6 @@ def process_worksheet(worksheet, dry_run: bool = False) -> tuple[int, int, float
 
             log(f"  ✓ Successfully imported and marked as imported on {imported_date}")
             imported_count += 1
-            total_hours += hours_display
 
         except requests.exceptions.HTTPError as e:
             log(f"  ✗ Failed to import: {e}")
